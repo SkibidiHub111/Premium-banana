@@ -1,0 +1,197 @@
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local request = (syn and syn.request) or (http and http.request) or http_request or request
+if not request then return end
+
+local startTick = tick()
+
+local ValidPlants = {}
+for _, name in ipairs({
+  "Carrot","Strawberry","Blueberry","Tomato","Cauliflower","Avocado","Banana",
+  "Kiwi","Green Apple","Pineapple","Prickly Pear","Rafflesia","Onion","Lettuce",
+  "Corn","Sunflower","Turnip","Broccoli","Cabbage","Garlic","Watermelon","Pumpkin",
+  "Golden Apple","Golden Carrot","Giant Strawberry","Silver Corn","Rainbow Tomato",
+  "Mythic Cactus","Legendary Lettuce","Enchanted Avocado","Frost Pineapple","Fire Chili",
+  "Toxic Turnip","Firework Flower","Liberty Lily"
+}) do ValidPlants[name] = true end
+
+local ValidPets = {}
+for _, name in ipairs({
+  "Bee","Butterfly","Queen Bee","Disco Bee","Mimic Octopus","Capybara","Peacock","Ostrich",
+  "Raccoon","Fennec Fox","Moon Cat","Echo Frog","Seal","Toucan","Hyacinth Macaw","Sand Snake",
+  "Meerkat","Blood Owl","Dragon Fly","Axolotl","Fire Ant","Caterpillar","Praying Mantis",
+  "Petal Bee","Honey Bee","Snail","Silver Monkey","Cow","Grey Mouse","Brown Mouse","Turtle",
+  "Sea Otter","Red Giant Ant","Giant Ant","Ant Queen","Wasp","Golden Lab","Mystic Frog",
+  "Lava Lizard","Crystal Spider","Snow Fox","Glowing Firefly","Shadow Cat","Spinosaurus",
+  "Brontosaurus","T‑Rex","Raptor","Triceratops","Dilophosaurus","Iguanodon","Pachycephalosaurus",
+  "Tree Frog","Blood Hedgehog","Scarlet Macaw","Chicken Zombie","Pig","Orange Tabby","Duck",
+  "Starfish","Crab","Polar Bear","Panda","Bald Eagle"
+}) do ValidPets[name] = true end
+
+local function safeField(n, v)
+  local t = "None"
+  pcall(function()
+    if typeof(v) == "table" then
+      t = table.concat(v, "\n")
+    else
+      t = tostring(v)
+    end
+    if #t > 1000 then t = t:sub(1, 1000) .. "..." end
+  end)
+  return { name = n, value = t, inline = false }
+end
+
+local function getBackpackPets()
+  local pets = {}
+  local bp = LocalPlayer:FindFirstChild("Backpack")
+  if bp then
+    for _, tool in ipairs(bp:GetChildren()) do
+      if tool:IsA("Tool") and ValidPets[tool.Name] then
+        table.insert(pets, tool.Name)
+      end
+    end
+  end
+  return pets
+end
+
+local function getMutatedPets()
+  local mutated = {}
+  local bp = LocalPlayer:FindFirstChild("Backpack")
+  if bp then
+    for _, tool in ipairs(bp:GetChildren()) do
+      if tool:IsA("Tool") and tool.Name:find("%[.+%]") then
+        table.insert(mutated, tool.Name)
+      end
+    end
+  end
+  return mutated
+end
+
+local function getFarm()
+  for _, f in ipairs(workspace:WaitForChild("Farm"):GetChildren()) do
+    local data = f:FindFirstChild("Important") and f.Important:FindFirstChild("Data")
+    if data and data:FindFirstChild("Owner") and data.Owner.Value == LocalPlayer.Name then
+      return f
+    end
+  end
+end
+
+local function getFarmEggs()
+  local eggs, farm = {}, getFarm()
+  if not farm then return eggs end
+  for _, obj in ipairs(farm:GetDescendants()) do
+    if obj:IsA("TextLabel") and obj.Text:lower():find("egg") then
+      table.insert(eggs, obj.Text)
+    end
+  end
+  return eggs
+end
+
+local function getFarmPlants()
+  local farm = getFarm()
+  if not farm then return {} end
+  local count, lines = {}, {}
+  for _, obj in ipairs(farm:GetDescendants()) do
+    if obj:IsA("Model") and ValidPlants[obj.Name] then
+      count[obj.Name] = (count[obj.Name] or 0) + 1
+    end
+  end
+  for name, qty in pairs(count) do
+    table.insert(lines, name .. " x" .. qty)
+  end
+  table.sort(lines)
+  return lines
+end
+
+local function sendWebhook(title, fields)
+  local cfg = getgenv().Config["Webhook"]
+  if not (cfg and cfg["Enabled"] and cfg["Url"] and cfg["Url"] ~= "") then return end
+  local payload = {
+    username = "🍌 Banana Config",
+    embeds = {{
+      title = title,
+      color = 65280,
+      fields = fields,
+      footer = { text = "thx buying" }
+    }}
+  }
+  local headers = { ["Content-Type"] = "application/json" }
+  local body = HttpService:JSONEncode(payload)
+  pcall(function()
+    request({
+      Url = cfg["Url"],
+      Method = "POST",
+      Headers = headers,
+      Body = body
+    })
+  end)
+end
+
+task.spawn(function()
+  local cfg = getgenv().Config["Webhook"]
+  if cfg["Webhook Profile"] then
+    sendWebhook("📊 Farm Status", {
+      { name = "👤 User", value = LocalPlayer.Name, inline = true },
+      { name = "⏳ Uptime", value = math.floor((tick() - startTick) / 60) .. " mins", inline = true },
+      safeField("📦 Pets", getBackpackPets()),
+      safeField("✨ Mutations", getMutatedPets()),
+      safeField("🥚 Eggs", getFarmEggs()),
+      safeField("🌿 Plants", getFarmPlants()),
+      { name = "📌 Status", value = getgenv().Status or "🟢 Running", inline = false }
+    })
+  end
+  while true do
+    task.wait((cfg["Delay"] or 1) * 60)
+    if cfg["Webhook Profile"] then
+      sendWebhook("📊 Farm Status", {
+        { name = "👤 User", value = LocalPlayer.Name, inline = true },
+        { name = "⏳ Uptime", value = math.floor((tick() - startTick) / 60) .. " mins", inline = true },
+        safeField("📦 Pets", getBackpackPets()),
+        safeField("✨ Mutations", getMutatedPets()),
+        safeField("🥚 Eggs", getFarmEggs()),
+        safeField("🌿 Plants", getFarmPlants()),
+        { name = "📌 Status", value = getgenv().Status or "🟢 Running", inline = false }
+      })
+    end
+  end
+end)
+
+task.spawn(function()
+  local lastEggs = {}
+  while true do
+    task.wait(10)
+    local cfg = getgenv().Config["Webhook"]
+    if cfg["Webhook Collect Egg"] then
+      local current = getFarmEggs()
+      for _, egg in ipairs(current) do
+        if not table.find(lastEggs, egg) then
+          sendWebhook("🥚 New Egg Plant", { safeField("New Egg(s)", current) })
+          break
+        end
+      end
+      lastEggs = current
+    end
+  end
+end)
+
+task.spawn(function()
+  local lastPets = {}
+  while true do
+    task.wait(10)
+    local cfg = getgenv().Config["Webhook"]
+    if cfg["Webhook Pet"] then
+      local current = getBackpackPets()
+      for _, pet in ipairs(current) do
+        if not table.find(lastPets, pet) then
+          sendWebhook("🐾 New Pet Found", {
+            safeField("🎒 Backpack Pets", current),
+            safeField("✨ Mutations", getMutatedPets())
+          })
+          break
+        end
+      end
+      lastPets = current
+    end
+  end
+end)
